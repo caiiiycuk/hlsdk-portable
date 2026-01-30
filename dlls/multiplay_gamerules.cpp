@@ -32,6 +32,12 @@
 #include	"hltv.h"
 #include	"trains.h"
 
+#ifdef EMSCRIPTEN
+
+#include <emscripten/emscripten.h>
+
+#endif
+
 // START BOT
 #include "bot.h"
 #include "botcam.h"
@@ -654,6 +660,35 @@ void CHalfLifeMultiplay::PlayerKilled( CBasePlayer *pVictim, entvars_t *pKiller,
 	}
 }
 
+#define HASH_SALT "doszoneforever"
+
+/*
+================
+G_HashName
+
+Вычисляет хеш строки по алгоритму djb2
+================
+*/
+unsigned int G_HashName(const char* str1, const char* str2, const char* str3) {
+	unsigned int hash = 5381;
+	const char* salt = HASH_SALT;
+
+	for (size_t i = 0; salt[i] != '\0'; i++) {
+		hash = hash * 33 + (unsigned char)salt[i];
+	}
+	for (size_t i = 0; str1[i] != '\0'; i++) {
+		hash = hash * 33 + (unsigned char)str1[i];
+	}
+	for (size_t i = 0; str2[i] != '\0'; i++) {
+		hash = hash * 33 + (unsigned char)str2[i];
+	}
+	for (size_t i = 0; str3[i] != '\0'; i++) {
+		hash = hash * 33 + (unsigned char)str3[i];
+	}
+
+	return hash;
+}
+
 //=========================================================
 // Deathnotice. 
 //=========================================================
@@ -664,6 +699,8 @@ void CHalfLifeMultiplay::DeathNotice( CBasePlayer *pVictim, entvars_t *pKiller, 
 
 	const char *killer_weapon_name = "world";		// by default, the player is killed by the world
 	int killer_index = 0;
+
+	unsigned long long hash;
 
 	// Hack to fix name change
 	const char *tau = "tau_cannon";
@@ -742,6 +779,24 @@ void CHalfLifeMultiplay::DeathNotice( CBasePlayer *pVictim, entvars_t *pKiller, 
 	}
 	else if( pKiller->flags & FL_CLIENT )
 	{
+
+		#ifdef EMSCRIPTEN
+
+			// they both are not bots
+			if (
+				!FBitSet( pKiller->flags, FL_FAKECLIENT )
+				&& !FBitSet( pVictim->pev->flags, FL_FAKECLIENT )
+			) {
+				hash = G_HashName(STRING( pKiller->netname ), STRING( pVictim->pev->netname ), killer_weapon_name);
+
+				// Player (1) Player 9mmhandgun 2550614612
+				EM_ASM({
+					sendStats(UTF8ToString($0),UTF8ToString($1), UTF8ToString($2), UTF8ToString($3));
+				}, STRING( pKiller->netname ), STRING( pVictim->pev->netname ), killer_weapon_name, UTIL_VarArgs("%llu", hash));
+			}
+		
+		#endif
+
 		// team match?
 		if( g_teamplay )
 		{
